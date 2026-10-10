@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
+  # POST /repos/<team repository>/dispatches with event_type hub-fanout: needs only Contents write on the token.
+  repository_dispatch:
+    types: [hub-fanout]
 permissions:
   contents: write
   pull-requests: write
