@@ -1,0 +1,37 @@
+# Added by SDLC Hub. Publishes this team's tasks, tracker, review verdict and the result of its workflows for each
+# feature to the hub-state branch of sdlc-hub-test/product-specs. It changes nothing in this repository.
+name: hub-report
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+permissions:
+  contents: read
+jobs:
+  hub-report:
+    runs-on: ubuntu-latest
+    # Secrets cannot be read in a job's if: each step checks the key in its environment instead.
+    env:
+      HUB_STATE_KEY: ${{ secrets.HUB_STATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HUB_STATE_KEY != ''
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        if: env.HUB_STATE_KEY != ''
+        with:
+          node-version: 22
+      - name: Publish to hub-state
+        if: env.HUB_STATE_KEY != ''
+        env:
+          CI_COMMIT_REF_NAME: ${{ github.event.workflow_run.head_branch }}
+          CI_COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+          CI_PIPELINE_ID: ${{ github.event.workflow_run.id }}
+          CI_PIPELINE_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          install -m 600 /dev/null /tmp/hub-key && printf '%s\n' "$HUB_STATE_KEY" > /tmp/hub-key
+          export GIT_SSH_COMMAND="ssh -i /tmp/hub-key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git clone --quiet --depth 1 --branch main "git@github.com:sdlc-hub-test/product-specs.git" /tmp/hub-specs
+          node /tmp/hub-specs/hub/cli.js report --team "web" --specs-url "git@github.com:sdlc-hub-test/product-specs.git" --push --tests ${{ github.event.workflow_run.conclusion == 'success' && 'passed' || 'failed' }}
