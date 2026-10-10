@@ -1,0 +1,40 @@
+# Added by SDLC Hub. Brings the shared files of this team's features (spec, flows, screens, test plan, contracts)
+# from sdlc-hub-test/product-specs as a pull request on hub/fanout. The team lead merges it.
+name: hub-fanout
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  hub-fanout:
+    runs-on: ubuntu-latest
+    env:
+      HUB_STATE_KEY: ${{ secrets.HUB_STATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HUB_STATE_KEY != ''
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        if: env.HUB_STATE_KEY != ''
+        with:
+          node-version: 22
+      - name: Shared files from sdlc-hub-test/product-specs
+        if: env.HUB_STATE_KEY != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          install -m 600 /dev/null /tmp/hub-key && printf '%s\n' "$HUB_STATE_KEY" > /tmp/hub-key
+          export GIT_SSH_COMMAND="ssh -i /tmp/hub-key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git clone --quiet --depth 1 "git@github.com:sdlc-hub-test/product-specs.git" /tmp/hub-specs
+          out=$(node /tmp/hub-specs/hub/cli.js fanout --team "web" --specs /tmp/hub-specs --into .)
+          echo "$out"
+          case "$out" in *FANOUT_CHANGED=1*) ;; *) exit 0 ;; esac
+          git fetch --quiet origin hub/fanout 2>/dev/null || true
+          if [ "$(git rev-parse HEAD^{tree})" = "$(git rev-parse --verify -q FETCH_HEAD^{tree} 2>/dev/null)" ]; then echo "The pull request has these files already"; exit 0; fi
+          git push --quiet --force origin hub/fanout
+          gh pr view hub/fanout --json state -q .state 2>/dev/null | grep -q OPEN || gh pr create --base "$BASE" --head hub/fanout --title "Shared files from product-specs (hub-fanout)" --body "Copied by hub-fanout from sdlc-hub-test/product-specs. The team lead merges it; change these files in sdlc-hub-test/product-specs, not here."
